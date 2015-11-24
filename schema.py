@@ -6,9 +6,13 @@ class SchemaError(Exception):
 
     """Error during Schema validation."""
 
-    def __init__(self, autos, errors):
+    def __init__(self, autos, errors, missing_keys=None, invalid_keys=None,
+                 wrong_keys=None):
         self.autos = autos if type(autos) is list else [autos]
         self.errors = errors if type(errors) is list else [errors]
+        self.missing_keys = missing_keys
+        self.invalid_keys = invalid_keys
+        self.wrong_keys = wrong_keys
         Exception.__init__(self, self.code)
 
     @property
@@ -139,6 +143,7 @@ class Schema(object):
                             nvalue = Schema(svalue, error=e).validate(value)
                         except SchemaError as _x:
                             x = _x
+                            x.invalid_keys = [key]
                             raise
                         else:
                             coverage.add(skey)
@@ -149,18 +154,20 @@ class Schema(object):
                 elif skey is not None:
                     if x is not None:
                         raise SchemaError(['Invalid value for key %r' % key] +
-                                          x.autos, [e] + x.errors)
+                                          x.autos, [e] + x.errors,
+                                          invalid_keys=[key])
             required = set(k for k in s if type(k) is not Optional)
             if not required.issubset(coverage):
                 missing_keys = required - coverage
                 s_missing_keys = ", ".join(repr(k) for k in missing_keys)
-                raise SchemaError('Missing keys: ' + s_missing_keys, e)
+                raise SchemaError('Missing keys: ' + s_missing_keys, e,
+                                  missing_keys=s_missing_keys)
             if len(new) != len(data):
                 wrong_keys = set(data.keys()) - set(new.keys())
                 s_wrong_keys = ', '.join(repr(k) for k in sorted(wrong_keys,
                                                                  key=repr))
                 raise SchemaError('Wrong keys %s in %r' % (s_wrong_keys, data),
-                                  e)
+                                  e, wrong_keys=s_wrong_keys)
 
             # Apply default-having optionals that haven't been used:
             defaults = set(k for k in s if type(k) is Optional and
