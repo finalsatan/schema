@@ -1,4 +1,4 @@
-__version__ = '0.4.1-alpha'
+__version__ = '0.4.2'
 __all__ = ['Schema', 'And', 'Or', 'Optional', 'SchemaError']
 
 
@@ -33,15 +33,16 @@ class And(object):
 
     def __init__(self, *args, **kw):
         self._args = args
-        assert list(kw) in (['error'], [])
+        assert list(kw) in (['error'], ['allow_wrong_keys'], [])
         self._error = kw.get('error')
+        self._allow_wrong_keys = kw.get('allow_wrong_keys')
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__,
                            ', '.join(repr(a) for a in self._args))
 
     def validate(self, data):
-        for s in [Schema(s, error=self._error) for s in self._args]:
+        for s in [Schema(s, error=self._error, allow_wrong_keys=self._allow_wrong_keys) for s in self._args]:
             data = s.validate(data)
         return data
 
@@ -50,7 +51,7 @@ class Or(And):
 
     def validate(self, data):
         x = SchemaError([], [])
-        for s in [Schema(s, error=self._error) for s in self._args]:
+        for s in [Schema(s, error=self._error, allow_wrong_keys=self._allow_wrong_keys) for s in self._args]:
             try:
                 return s.validate(data)
             except SchemaError as _x:
@@ -100,9 +101,10 @@ def _priority(s):
 
 class Schema(object):
 
-    def __init__(self, schema, error=None):
+    def __init__(self, schema, error=None, allow_wrong_keys=True):
         self._schema = schema
         self._error = error
+        self._allow_wrong_keys = allow_wrong_keys
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self._schema)
@@ -117,13 +119,14 @@ class Schema(object):
     def validate(self, data):
         s = self._schema
         e = self._error
+        w = self._allow_wrong_keys
         flavor = _priority(s)
         if flavor == ITERABLE:
-            data = Schema(type(s), error=e).validate(data)
+            data = Schema(type(s), error=e, allow_wrong_keys=w).validate(data)
             o = Or(*s, error=e)
             return type(data)(o.validate(d) for d in data)
         if flavor == DICT:
-            data = Schema(dict, error=e).validate(data)
+            data = Schema(dict, error=e, allow_wrong_keys=w).validate(data)
             new = type(data)()  # new - is a dict of the validated values
             x = None
             coverage = set()  # matched schema keys
@@ -135,12 +138,12 @@ class Schema(object):
                 for skey in sorted_skeys:
                     svalue = s[skey]
                     try:
-                        nkey = Schema(skey, error=e).validate(key)
+                        nkey = Schema(skey, error=e, allow_wrong_keys=w).validate(key)
                     except SchemaError:
                         pass
                     else:
                         try:
-                            nvalue = Schema(svalue, error=e).validate(value)
+                            nvalue = Schema(svalue, error=e, allow_wrong_keys=w).validate(value)
                         except SchemaError as _x:
                             x = _x
                             x.invalid_keys = [key]
@@ -162,7 +165,7 @@ class Schema(object):
                 s_missing_keys = ", ".join(repr(k) for k in missing_keys)
                 raise SchemaError('Missing keys: ' + s_missing_keys, e,
                                   missing_keys=list(missing_keys))
-            if len(new) != len(data):
+            if not self._allow_wrong_keys and len(new) != len(data):
                 wrong_keys = set(data.keys()) - set(new.keys())
                 wrong_keys = [k for k in sorted(wrong_keys, key=repr)]
                 s_wrong_keys = ', '.join(repr(k) for k in wrong_keys)
