@@ -35,7 +35,7 @@ class And(object):
         self._args = args
         assert list(kw) in (['error'], ['allow_wrong_keys'], [])
         self._error = kw.get('error')
-        self._allow_wrong_keys = kw.get('allow_wrong_keys')
+        self._allow_wrong_keys = kw.get('allow_wrong_keys', True)
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__,
